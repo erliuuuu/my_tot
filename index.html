@@ -48,8 +48,8 @@
     .day { min-height:605px; padding:13px 8px; border-right:1px solid var(--line); } .day:last-child { border:0; }
     .day-head { padding:0 4px 12px; border-bottom:2px solid var(--blue); margin-bottom:12px; } .day-name { display:block; color:var(--blue); font-size:13px; font-weight:700; } .day-date { display:block; margin-top:3px; color:var(--muted); font:10px "DM Mono",monospace; }
     .day.today .day-head { border-bottom-color:#d18b43; } .day.today .day-name { color:#b56b29; }
-    .drop-zone { min-height:128px; padding:1px; border-radius:8px; } .drop-zone.over { background:var(--blue-pale); outline:1px dashed #7a9abb; }
-    .week-task { margin:7px 0; padding:8px; font-size:12px; } .week-task .task-meta { margin-top:4px; }
+    .drop-zone { display:flex; flex-direction:column; align-items:stretch; gap:9px; min-height:128px; padding:1px; border-radius:8px; } .drop-zone.over { background:var(--blue-pale); outline:1px dashed #7a9abb; }
+    .week-task { margin:0; padding:8px; font-size:12px; } .week-task .task-meta { margin-top:4px; }
     .focus-note { margin-top:22px; padding-top:17px; border-top:1px solid var(--line); } .focus-note textarea { width:100%; min-height:100px; resize:vertical; border:0; border-bottom:1px solid #cbd1d7; background:transparent; outline:none; color:var(--ink); line-height:1.7; font-size:13px; }
     .quick-add { margin-top:16px; padding-top:17px; border-top:1px solid var(--line); } .quick-add input { width:100%; border:0; border-bottom:1px solid #cbd1d7; background:transparent; padding:9px 2px; outline:none; } .quick-add input:focus { border-color:var(--blue); }
     .inbox { border:1px dashed #bbc4cd; min-height:72px; padding:10px; border-radius:8px; background:rgba(255,255,255,.4); } .inbox.over { background:var(--blue-pale); border-color:#7a9abb; }
