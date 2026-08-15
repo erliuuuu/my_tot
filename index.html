@@ -38,6 +38,7 @@
     .task-card { display:flex; align-items:flex-start; gap:9px; padding:10px; background:#fffefa; border:1px solid #e9e6dc; border-radius:8px; box-shadow:0 2px 4px rgba(32,42,59,.035); cursor:grab; transition:.18s ease; }
     .task-card:hover { transform:translateY(-2px); border-color:#a8bbcf; box-shadow:0 7px 12px rgba(32,42,59,.08); }
     .task-card.dragging { opacity:.4; }
+    .task-card[draggable="true"] { touch-action:none; }
     .check { flex:0 0 17px; width:17px; height:17px; padding:0; margin-top:1px; border:1.5px solid #9ca7b4; border-radius:50%; background:white; }
     .check.done { background:var(--blue); border-color:var(--blue); color:white; font-size:11px; }
     .task-main { min-width:0; flex:1; } .task-name { font-size:13px; line-height:1.45; overflow-wrap:anywhere; } .done .task-name { color:#929aa5; text-decoration:line-through; }
@@ -108,7 +109,7 @@
     const SUPABASE_KEY = 'sb_publishable_20Sd5qBbpSXzRQIK0AmHNw_RuwwKUqd';
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     const TABLE = 'beau';
-    let items = [], currentFilter = 'active', weekOffset = 0, draggingId = null;
+    let items = [], currentFilter = 'active', weekOffset = 0, draggingId = null, pointerDrag = null;
     const $ = selector => document.querySelector(selector);
     const escapeHTML = text => String(text || '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
     const dateString = date => { const tz = date.getTimezoneOffset() * 60000; return new Date(date - tz).toISOString().slice(0,10); };
@@ -121,6 +122,27 @@
       element.querySelector('.check').addEventListener('click', event => { event.stopPropagation(); updateItem(item.id, {status:item.status === 'done' ? 'active' : 'done'}); });
       element.querySelector('.delete').addEventListener('click', event => { event.stopPropagation(); removeItem(item.id); });
       element.addEventListener('dragstart', () => { draggingId = item.id; element.classList.add('dragging'); }); element.addEventListener('dragend', () => { draggingId=null; element.classList.remove('dragging'); document.querySelectorAll('.over').forEach(el=>el.classList.remove('over')); });
+      // HTML5 drag events do not run on iPad/iPhone. Pointer Events cover touch, pen, and mouse.
+      element.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'mouse' || event.button !== 0 || event.target.closest('button')) return;
+        pointerDrag = { id:item.id, element, pointerId:event.pointerId, startX:event.clientX, startY:event.clientY, active:false };
+        element.setPointerCapture(event.pointerId);
+      });
+      element.addEventListener('pointermove', event => {
+        if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+        if (!pointerDrag.active && Math.hypot(event.clientX-pointerDrag.startX,event.clientY-pointerDrag.startY) < 8) return;
+        pointerDrag.active = true; draggingId = pointerDrag.id; element.classList.add('dragging'); event.preventDefault();
+        const zone = document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-drop]');
+        document.querySelectorAll('.over').forEach(el => el.classList.toggle('over',el === zone));
+      });
+      const finishPointerDrag = event => {
+        if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+        const wasDragging = pointerDrag.active;
+        const zone = wasDragging ? document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-drop]') : null;
+        const id = pointerDrag.id; pointerDrag = null; draggingId = null; element.classList.remove('dragging'); document.querySelectorAll('.over').forEach(el=>el.classList.remove('over'));
+        if (zone) updateItem(id,{scheduled_date:zone.dataset.drop==='backlog'?null:zone.dataset.drop});
+      };
+      element.addEventListener('pointerup', finishPointerDrag); element.addEventListener('pointercancel', finishPointerDrag);
       return element; }
     function renderWeek() { const monday = startOfWeek(), names=['周一','周二','周三','周四','周五','周六','周日'], today=dateString(new Date()); $('#weekLabel').textContent = `${dateLabel(monday)} — ${dateLabel(new Date(monday.getTime()+6*864e5))}`; const board=$('#weekBoard'); board.innerHTML='';
       names.forEach((name,index) => { const date=new Date(monday); date.setDate(monday.getDate()+index); const iso=dateString(date); const day=document.createElement('div'); day.className=`day ${iso===today?'today':''}`; day.innerHTML=`<div class="day-head"><span class="day-name">${name}</span><span class="day-date">${iso.slice(5).replace('-',' / ')}</span></div><div class="drop-zone" data-drop="${iso}"></div>`; board.appendChild(day); const zone=day.querySelector('.drop-zone'); items.filter(item => item.kind==='task' && item.scheduled_date===iso).forEach(item=>zone.appendChild(card(item,'week'))); wireDropZone(zone); });
