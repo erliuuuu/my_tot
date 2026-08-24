@@ -39,7 +39,7 @@
     .task-card { display:flex; align-items:flex-start; gap:9px; padding:10px; background:#fffefa; border:1px solid #e9e6dc; border-radius:8px; box-shadow:0 2px 4px rgba(32,42,59,.035); cursor:grab; transition:.18s ease; }
     .task-card:hover { transform:translateY(-2px); border-color:#a8bbcf; box-shadow:0 7px 12px rgba(32,42,59,.08); }
     .task-card.dragging { opacity:.4; }
-    .task-card[draggable="true"] { touch-action:none; }
+    .task-card[draggable="true"] { touch-action:auto; } .task-card.touch-armed { touch-action:none; outline:2px solid var(--blue); outline-offset:2px; }
     .check { flex:0 0 17px; width:17px; height:17px; padding:0; margin-top:1px; border:1.5px solid #9ca7b4; border-radius:50%; background:white; }
     .check.done { background:var(--blue); border-color:var(--blue); color:white; font-size:11px; }
     .task-main { min-width:0; flex:1; } .task-name { font-size:13px; line-height:1.45; overflow-wrap:anywhere; } .done .task-name { color:#929aa5; text-decoration:line-through; }
@@ -112,7 +112,7 @@
     const SUPABASE_KEY = 'sb_publishable_20Sd5qBbpSXzRQIK0AmHNw_RuwwKUqd';
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     const TABLE = 'beau';
-let items = [], currentFilter = 'active', weekOffset = 0, draggingId = null, pointerDrag = null, hiddenIdeaIds = new Set();
+let items = [], currentFilter = 'active', weekOffset = 0, draggingId = null, pointerDrag = null, touchDragArmed = null, touchTap = null, lastTouchTap = null, hiddenIdeaIds = new Set();
     try { hiddenIdeaIds = new Set(JSON.parse(localStorage.getItem('beau-hidden-ideas') || '[]')); } catch (error) { console.warn('无法读取本地隐藏想法', error); }
     const $ = selector => document.querySelector(selector);
     const escapeHTML = text => String(text || '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -127,13 +127,16 @@ let items = [], currentFilter = 'active', weekOffset = 0, draggingId = null, poi
       element.querySelector('.delete').addEventListener('click', event => { event.stopPropagation(); removeItem(item.id); });
       const edit = element.querySelector('.edit'); if (edit) edit.addEventListener('click', event => { event.stopPropagation(); const title = prompt('修改任务', item.title); if (title !== null && title.trim() && title.trim() !== item.title) updateItem(item.id,{title:title.trim()}); });
       element.addEventListener('dragstart', () => { draggingId = item.id; element.classList.add('dragging'); }); element.addEventListener('dragend', () => { draggingId=null; element.classList.remove('dragging'); document.querySelectorAll('.over').forEach(el=>el.classList.remove('over')); });
-      // HTML5 drag events do not run on iPad/iPhone. Pointer Events cover touch, pen, and mouse.
+      // Touch devices enter drag mode after a double tap, preserving normal page scrolling.
+      const isTouchPointer = event => event.pointerType !== 'mouse' && event.button === 0;
       element.addEventListener('pointerdown', event => {
-        if (event.pointerType === 'mouse' || event.button !== 0 || event.target.closest('button')) return;
+        if (!isTouchPointer(event) || event.target.closest('button')) return;
+        if (!touchDragArmed || touchDragArmed.id !== item.id) { touchTap = { id:item.id, element, pointerId:event.pointerId, startX:event.clientX, startY:event.clientY }; return; }
         pointerDrag = { id:item.id, element, pointerId:event.pointerId, startX:event.clientX, startY:event.clientY, active:false };
         element.setPointerCapture(event.pointerId);
       });
       element.addEventListener('pointermove', event => {
+        if (touchTap && touchTap.pointerId === event.pointerId) { if (Math.hypot(event.clientX-touchTap.startX,event.clientY-touchTap.startY) > 12) touchTap=null; return; }
         if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
         if (!pointerDrag.active && Math.hypot(event.clientX-pointerDrag.startX,event.clientY-pointerDrag.startY) < 8) return;
         pointerDrag.active = true; draggingId = pointerDrag.id; element.classList.add('dragging'); event.preventDefault();
@@ -141,10 +144,18 @@ let items = [], currentFilter = 'active', weekOffset = 0, draggingId = null, poi
         document.querySelectorAll('.over').forEach(el => el.classList.toggle('over',el === zone));
       });
       const finishPointerDrag = event => {
+        if (touchTap && touchTap.pointerId === event.pointerId) {
+          const tap=touchTap, isTap=Math.hypot(event.clientX-tap.startX,event.clientY-tap.startY) <= 12; touchTap=null;
+          if (!isTap) return;
+          const now=Date.now();
+          if (lastTouchTap && lastTouchTap.id === item.id && now-lastTouchTap.time < 350) { if (touchDragArmed?.element) touchDragArmed.element.classList.remove('touch-armed'); touchDragArmed={id:item.id,element}; element.classList.add('touch-armed'); lastTouchTap=null; showStatus('已进入拖动模式：按住任务拖到某一天'); }
+          else lastTouchTap={id:item.id,time:now};
+          return;
+        }
         if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
         const wasDragging = pointerDrag.active;
         const zone = wasDragging ? document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-drop]') : null;
-        const id = pointerDrag.id; pointerDrag = null; draggingId = null; element.classList.remove('dragging'); document.querySelectorAll('.over').forEach(el=>el.classList.remove('over'));
+        const id = pointerDrag.id; pointerDrag = null; draggingId = null; element.classList.remove('dragging'); element.classList.remove('touch-armed'); touchDragArmed=null; document.querySelectorAll('.over').forEach(el=>el.classList.remove('over'));
         if (zone) updateItem(id,{scheduled_date:zone.dataset.drop==='backlog'?null:zone.dataset.drop});
       };
       element.addEventListener('pointerup', finishPointerDrag); element.addEventListener('pointercancel', finishPointerDrag);
